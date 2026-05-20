@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄钟</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --text: #e0e0e0;
+    --text-secondary: #a0a0b0;
+    --work: #e94560;
+    --work-glow: rgba(233, 69, 96, 0.3);
+    --break: #4ecca3;
+    --break-glow: rgba(78, 204, 163, 0.3);
+    --btn-bg: #0f3460;
+    --btn-hover: #1a508b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    transition: background 0.5s;
+    user-select: none;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  /* Timer circle */
+  .timer-wrapper {
+    position: relative;
+    width: 320px;
+    height: 320px;
+  }
+
+  .timer-ring {
+    transform: rotate(-90deg);
+    width: 320px;
+    height: 320px;
+  }
+
+  .ring-bg {
+    fill: none;
+    stroke: var(--surface);
+    stroke-width: 8;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--work);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke 0.5s, stroke-dashoffset 0.3s linear;
+  }
+
+
+
+  .timer-display {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+
+  .time {
+    font-size: 72px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 4px;
+    line-height: 1;
+  }
+
+  .mode-label {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 6px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .session-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+  }
+
+  /* Buttons */
+  .controls {
+    display: flex;
+    gap: 16px;
+  }
+
+  .btn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 28px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    color: #fff;
+    background: var(--btn-bg);
+  }
+
+  .btn:hover { background: var(--btn-hover); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  .btn-start {
+    background: var(--work);
+    min-width: 120px;
+  }
+  .btn-start:hover { background: #f0627a; }
+
+  .btn-mode {
+    background: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+  }
+  .btn-mode:hover {
+    border-color: var(--text);
+    color: var(--text);
+    background: transparent;
+  }
+
+  /* Break mode overrides */
+  body.break-mode { background: #1a2e2a; }
+  body.break-mode .ring-progress { stroke: var(--break); }
+  body.break-mode .btn-start { background: var(--break); color: #1a1a2e; }
+  body.break-mode .btn-start:hover { background: #6ad8b3; }
+
+  /* Responsive */
+  @media (max-width: 400px) {
+    .timer-wrapper { width: 260px; height: 260px; }
+    .timer-ring { width: 260px; height: 260px; }
+    .time { font-size: 56px; }
+    .controls { flex-direction: column; align-items: center; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="timer-wrapper">
+    <svg class="timer-ring" viewBox="0 0 320 320">
+      <circle class="ring-bg" cx="160" cy="160" r="150"/>
+      <circle class="ring-progress" id="ring" cx="160" cy="160" r="150"
+              stroke-dasharray="942.48" stroke-dashoffset="0"/>
+    </svg>
+    <div class="timer-display">
+      <div class="mode-label" id="modeLabel">专注</div>
+      <div class="time" id="timer">25:00</div>
+      <div class="session-count" id="sessionCount"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-start" id="btnStart" onclick="toggleTimer()">开始</button>
+    <button class="btn" id="btnReset" onclick="resetTimer()">重置</button>
+    <button class="btn btn-mode" id="btnMode" onclick="toggleMode()">休息</button>
+  </div>
+</div>
+
+<script>
+const WORK_MIN = 25;
+const BREAK_MIN = 5;
+
+const CIRCUMFERENCE = 2 * Math.PI * 150; // ~942.48
+
+let mode = 'work';        // 'work' | 'break'
+let remainingSec = WORK_MIN * 60;
+let totalSec = WORK_MIN * 60;
+let timerId = null;
+let targetEnd = null;     // Date.now() when timer should end
+let completedSessions = 0;
+
+const el = {
+  timer: document.getElementById('timer'),
+  ring: document.getElementById('ring'),
+  modeLabel: document.getElementById('modeLabel'),
+  sessionCount: document.getElementById('sessionCount'),
+  btnStart: document.getElementById('btnStart'),
+  btnMode: document.getElementById('btnMode'),
+};
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function updateDisplay() {
+  el.timer.textContent = formatTime(remainingSec);
+  const progress = 1 - remainingSec / totalSec;
+  el.ring.style.strokeDashoffset = CIRCUMFERENCE * progress;
+  // Update document title
+  const label = mode === 'work' ? '专注' : '休息';
+  document.title = formatTime(remainingSec) + ' - ' + label;
+}
+
+function tick() {
+  const now = Date.now();
+  const left = Math.max(0, Math.round((targetEnd - now) / 1000));
+  remainingSec = left;
+  updateDisplay();
+
+  if (remainingSec <= 0) {
+    clearInterval(timerId);
+    timerId = null;
+    onTimerEnd();
+  }
+}
+
+function onTimerEnd() {
+  playBeep();
+  if (mode === 'work') {
+    completedSessions++;
+  }
+  // Auto-switch mode
+  mode = mode === 'work' ? 'break' : 'work';
+  applyMode();
+  remainingSec = totalSec;
+  updateDisplay();
+  // Auto-start next session
+  startTimer();
+}
+
+function applyMode() {
+  totalSec = (mode === 'work' ? WORK_MIN : BREAK_MIN) * 60;
+  remainingSec = totalSec;
+
+  document.body.classList.toggle('break-mode', mode === 'break');
+  el.modeLabel.textContent = mode === 'work' ? '专注' : '休息';
+  el.btnMode.textContent = mode === 'work' ? '休息' : '专注';
+  el.ring.style.strokeDashoffset = '0';
+
+  const countText = completedSessions > 0
+    ? '已完成 ' + completedSessions + ' 个番茄'
+    : '';
+  el.sessionCount.textContent = countText;
+}
+
+function startTimer() {
+  targetEnd = Date.now() + remainingSec * 1000;
+  timerId = setInterval(tick, 200);
+  el.btnStart.textContent = '暂停';
+}
+
+function pauseTimer() {
+  clearInterval(timerId);
+  timerId = null;
+  targetEnd = null;
+  el.btnStart.textContent = '开始';
+}
+
+function toggleTimer() {
+  if (timerId) {
+    pauseTimer();
+  } else {
+    startTimer();
+  }
+}
+
+function resetTimer() {
+  pauseTimer();
+  remainingSec = totalSec;
+  updateDisplay();
+}
+
+function toggleMode() {
+  pauseTimer();
+  mode = mode === 'work' ? 'break' : 'work';
+  applyMode();
+  updateDisplay();
+}
+
+function playBeep() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const notes = [880, 660, 880, 660];
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.15 + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + i * 0.15);
+    osc.stop(ctx.currentTime + i * 0.15 + 0.3);
+  });
+}
+
+// Init
+applyMode();
+updateDisplay();
+</script>
+</body>
+</html>
