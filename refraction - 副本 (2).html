@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光线折射模拟</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  canvas {
+    border-radius: 12px;
+    background: #161b22;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    cursor: crosshair;
+  }
+
+  .panel {
+    width: 300px;
+    background: #161b22;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    border-left: 1px solid #30363d;
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+
+  .panel h2 {
+    font-size: 18px;
+    color: #58a6ff;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 10px;
+  }
+
+  .panel h3 {
+    font-size: 13px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  .param-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .param-group label {
+    font-size: 13px;
+    color: #c9d1d9;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .param-group label span {
+    color: #58a6ff;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #30363d;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #58a6ff;
+    cursor: pointer;
+    border: 2px solid #161b22;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+  }
+
+  .info-row .val {
+    color: #58a6ff;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .toggle-row input[type="checkbox"] {
+    accent-color: #58a6ff;
+    width: 16px;
+    height: 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="canvas-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div class="panel">
+  <h2>光线折射模拟</h2>
+
+  <h3>介质参数</h3>
+
+  <div class="param-group">
+    <label>上方介质折射率 n₁ <span id="n1Val">1.00</span></label>
+    <input type="range" id="n1" min="1" max="2.5" step="0.01" value="1">
+  </div>
+
+  <div class="param-group">
+    <label>玻璃折射率 n₂ <span id="n2Val">1.50</span></label>
+    <input type="range" id="n2" min="1" max="3" step="0.01" value="1.5">
+  </div>
+
+  <div class="param-group">
+    <label>入射角 <span id="angleVal">45°</span></label>
+    <input type="range" id="angle" min="0" max="89" step="0.5" value="45">
+  </div>
+
+  <h3>玻璃形状</h3>
+
+  <div class="param-group">
+    <label>厚度 <span id="thickVal">200 px</span></label>
+    <input type="range" id="thickness" min="80" max="350" step="1" value="200">
+  </div>
+
+  <div class="param-group">
+    <label>倾斜角 <span id="tiltVal">0°</span></label>
+    <input type="range" id="tilt" min="-40" max="40" step="0.5" value="0">
+  </div>
+
+  <div class="param-group">
+    <label>光源距离 <span id="distVal">380 px</span></label>
+    <input type="range" id="rayDist" min="150" max="500" step="5" value="380">
+  </div>
+
+  <h3>显示选项</h3>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="showDispersion" checked>
+    <label for="showDispersion">色散效果（波长分解）</label>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="showReflect" checked>
+    <label for="showReflect">显示反射光线</label>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="showNormals" checked>
+    <label for="showNormals">显示法线</label>
+  </div>
+
+  <h3>实时数据</h3>
+
+  <div class="info-row"><span>入射角 θ₁</span><span class="val" id="infoTheta1">45.0°</span></div>
+  <div class="info-row"><span>折射角 θ₂</span><span class="val" id="infoTheta2">28.1°</span></div>
+  <div class="info-row"><span>反射角 θᵣ</span><span class="val" id="infoRefl">45.0°</span></div>
+  <div class="info-row"><span>全反射临界角</span><span class="val" id="infoCritical">—</span></div>
+  <div class="info-row"><span>出射偏移</span><span class="val" id="infoOffset">0.0 px</span></div>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const slN1 = document.getElementById('n1');
+  const slN2 = document.getElementById('n2');
+  const slAngle = document.getElementById('angle');
+  const slThickness = document.getElementById('thickness');
+  const slTilt = document.getElementById('tilt');
+  const slRayDist = document.getElementById('rayDist');
+  const cbDispersion = document.getElementById('showDispersion');
+  const cbReflect = document.getElementById('showReflect');
+  const cbNormals = document.getElementById('showNormals');
+
+  let W, H;
+
+  function resize() {
+    W = Math.min(window.innerWidth - 360, 900);
+    H = Math.min(window.innerHeight - 40, 700);
+    canvas.width = W;
+    canvas.height = H;
+  }
+
+  window.addEventListener('resize', function () { resize(); draw(); });
+  resize();
+
+  function draw() {
+    if (W <= 0 || H <= 0) return;
+
+    // ── Read inputs ──────────────────────────
+    const n1 = parseFloat(slN1.value) || 1;
+    const n2 = parseFloat(slN2.value) || 1.5;
+    const alphaDeg = parseFloat(slAngle.value) || 45;
+    const alpha = alphaDeg * Math.PI / 180;
+    const thick = parseFloat(slThickness.value) || 200;
+    const tiltDeg = parseFloat(slTilt.value) || 0;
+    const tilt = tiltDeg * Math.PI / 180;
+    const rayDist = parseFloat(slRayDist.value) || 380;
+
+    // ── Update labels ────────────────────────
+    document.getElementById('n1Val').textContent = n1.toFixed(2);
+    document.getElementById('n2Val').textContent = n2.toFixed(2);
+    document.getElementById('angleVal').textContent = alphaDeg.toFixed(1) + '°';
+    document.getElementById('thickVal').textContent = thick.toFixed(0) + ' px';
+    document.getElementById('tiltVal').textContent = tiltDeg.toFixed(1) + '°';
+    document.getElementById('distVal').textContent = rayDist.toFixed(0) + ' px';
+
+    // ── Geometry ─────────────────────────────
+    // Surface direction s (along surface, rightward)
+    const sx = Math.cos(tilt);
+    const sy = Math.sin(tilt);
+
+    // Normal pointing UP (into medium 1 / air above): rotate s by -90° canvas = clockwise
+    // In canvas: (sx, sy) rotated by +90° = (-sy, sx)  or by -90° = (sy, -sx)
+    // n_up = normal pointing from surface *into air above* = (sy, -sx)  [rotate s by -90° in canvas → clockwise → (sin(tilt), -cos(tilt))]
+    const nUpX = Math.sin(tilt);
+    const nUpY = -Math.cos(tilt);
+
+    // Normal pointing DOWN (into medium 2 / glass below) = opposite of n_up
+    const nDownX = -nUpX;
+    const nDownY = -nUpY;
+
+    // Glass block: top surface center, bottom surface center
+    const cx = W / 2;
+    const cy = H / 2;
+    // Offset top center upward along nUp by thick/2
+    const bTopCx = cx + (thick / 2) * nUpX;
+    const bTopCy = cy + (thick / 2) * nUpY;
+    // Bottom center = top center + thick * nDown (nDown = -nUp)
+    const bBotCx = bTopCx + thick * nDownX;
+    const bBotCy = bTopCy + thick * nDownY;
+
+    // Hit point is the top-center of the top surface
+    const hitX = bTopCx;
+    const hitY = bTopCy;
+
+    // ── Incident ray direction ──────────────
+    // alpha is measured from the upward normal.
+    // In canvas coords, rotating nUp by +alpha (clockwise) gives the
+    // "arrival" direction (where light comes FROM).
+    // The incident direction is the opposite.
+    // rot +α: (nUpX*cosα + nUpY*sinα, -nUpX*sinα + nUpY*cosα)
+    const cosA = Math.cos(alpha);
+    const sinA = Math.sin(alpha);
+    const arrX = nUpX * cosA + nUpY * sinA;
+    const arrY = -nUpX * sinA + nUpY * cosA;
+    const iDirX = -arrX;
+    const iDirY = -arrY;
+
+    // Source point
+    const srcX = hitX - rayDist * iDirX;
+    const srcY = hitY - rayDist * iDirY;
+
+    // ── Compute refracted angle at top surface ──
+    // Angle between incident direction and nDown (both point "downward")
+    const cosTheta1 = iDirX * nDownX + iDirY * nDownY;
+    const sinTheta1 = Math.sqrt(Math.max(0, 1 - cosTheta1 * cosTheta1));
+    const sinTheta2 = (n1 / n2) * sinTheta1;
+    const isTIR = sinTheta2 >= 1;
+    const cosTheta2 = isTIR ? 0 : Math.sqrt(Math.max(0, 1 - sinTheta2 * sinTheta2));
+
+    // ── Draw ──────────────────────────────────
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    // Glass block (parallelogram)
+    const halfW = 220;
+    const tlx = bTopCx - halfW * sx, tly = bTopCy - halfW * sy;
+    const trx = bTopCx + halfW * sx, try_ = bTopCy + halfW * sy;
+    const brx = bBotCx + halfW * sx, bry = bBotCy + halfW * sy;
+    const blx = bBotCx - halfW * sx, bly = bBotCy - halfW * sy;
+
+    ctx.fillStyle = 'rgba(100, 180, 255, 0.12)';
+    ctx.strokeStyle = 'rgba(150, 210, 255, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tlx, tly); ctx.lineTo(trx, try_);
+    ctx.lineTo(brx, bry); ctx.lineTo(blx, bly);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Glass label
+    ctx.fillStyle = 'rgba(150,210,255,0.7)';
+    ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('n₂ = ' + n2.toFixed(2), cx, (bTopCy + bBotCy) / 2 + 5);
+    ctx.fillText('n₁ = ' + n1.toFixed(2), cx, bTopCy - 44);
+
+    // Normals
+    if (cbNormals.checked) {
+      const nl = 60;
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 5]);
+      // Top surface normal (both directions, through hit point)
+      ctx.beginPath();
+      ctx.moveTo(hitX - nUpX * nl, hitY - nUpY * nl);
+      ctx.lineTo(hitX + nUpX * nl, hitY + nUpY * nl);
+      ctx.stroke();
+      // Bottom surface normal
+      ctx.beginPath();
+      ctx.moveTo(bBotCx - nUpX * nl, bBotCy - nUpY * nl);
+      ctx.lineTo(bBotCx + nUpX * nl, bBotCy + nUpY * nl);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ── Incident ray ──────────────────────────
+    ctx.strokeStyle = '#ffbb33';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(srcX, srcY);
+    ctx.lineTo(hitX, hitY);
+    ctx.stroke();
+    drawArrow(srcX, srcY, hitX, hitY, '#ffbb33');
+
+    // Source glow
+    ctx.fillStyle = '#ffbb33';
+    ctx.beginPath();
+    ctx.arc(srcX, srcY, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Reflection ────────────────────────────
+    if (cbReflect.checked) {
+      // iRefl = i - 2*dot(i, n_up)*n_up  (n_up = normal pointing into incident medium)
+      const d = 2 * (iDirX * nUpX + iDirY * nUpY);
+      const reflX = iDirX - d * nUpX;
+      const reflY = iDirY - d * nUpY;
+      const reflEndX = hitX + 350 * reflX;
+      const reflEndY = hitY + 350 * reflY;
+
+      ctx.strokeStyle = 'rgba(255, 180, 50, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath();
+      ctx.moveTo(hitX, hitY);
+      ctx.lineTo(reflEndX, reflEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ── Refracted rays ───────────────────────
+    // Entry: refracted direction r1 (angle θ₂ from nDown)
+    // Rotate nDown clockwise by θ₂ in canvas:
+    //   (nDownX*cosθ₂ + nDownY*sinθ₂, -nDownX*sinθ₂ + nDownY*cosθ₂)
+    // But note: this is for "clockwise" rotation. Let me just use the direct formula.
+    // The refracted ray inside glass: perpendicular to nDown is the surface tangent s.
+    // Direction = sinθ₂ * s + cosθ₂ * nDown
+    // (This decomposes the direction into along-surface + along-normal components)
+
+    const wavelengths = cbDispersion.checked
+      ? [{ nScale: 1.014, color: '#8b5cf6' },  // violet
+         { nScale: 1.007, color: '#3b82f6' },  // blue
+         { nScale: 1.000, color: '#10b981' },  // green
+         { nScale: 0.994, color: '#f59e0b' },  // yellow
+         { nScale: 0.988, color: '#ef4444' }]  // red
+      : [{ nScale: 1.0, color: '#10b981' }];
+
+    let mainTheta2 = null;
+
+    for (var wi = 0; wi < wavelengths.length; wi++) {
+      const wl = wavelengths[wi];
+      const nGlass = n2 * wl.nScale;
+      const mu = n1 / nGlass;
+      const st2 = mu * sinTheta1;
+
+      if (st2 >= 1) continue; // TIR for this wavelength
+
+      const ct2 = Math.sqrt(Math.max(0, 1 - st2 * st2));
+
+      if (wl.nScale === 1.0) {
+        mainTheta2 = Math.asin(st2);
+      }
+
+      // Refracted direction inside glass: sinθ₂ * s + cosθ₂ * nDown
+      const r1x = st2 * sx + ct2 * nDownX;
+      const r1y = st2 * sy + ct2 * nDownY;
+
+      // Intersect with bottom surface
+      // Ray: hit + t * r1, line: bBotC + u * s
+      const dCross = r1x * sy - r1y * sx;
+      if (Math.abs(dCross) < 1e-6) continue;
+
+      const t = ((bBotCx - hitX) * sy - (bBotCy - hitY) * sx) / dCross;
+      if (t <= 0 || t > 3000) continue;
+
+      const botX = hitX + t * r1x;
+      const botY = hitY + t * r1y;
+
+      // Exit refraction (glass → air)
+      // Angle of incidence at bottom = θ₂ (relative to nDown)
+      // Snell: nGlass * sinθ₂ = n1 * sinθ₃ → sinθ₃ = nGlass/n1 * st2
+      const st3 = (nGlass / n1) * st2;
+      if (st3 >= 1) continue; // TIR at exit
+
+      const ct3 = Math.sqrt(Math.max(0, 1 - st3 * st3));
+
+      // Exit direction: sinθ₃ * s + cosθ₃ * nDown
+      const r2x = st3 * sx + ct3 * nDownX;
+      const r2y = st3 * sy + ct3 * nDownY;
+
+      const exitEndX = botX + 380 * r2x;
+      const exitEndY = botY + 380 * r2y;
+
+      // Draw inside glass
+      ctx.strokeStyle = wl.color;
+      ctx.lineWidth = cbDispersion.checked ? 2 : 3;
+      ctx.shadowColor = wl.color;
+      ctx.shadowBlur = cbDispersion.checked ? 4 : 10;
+      ctx.beginPath();
+      ctx.moveTo(hitX, hitY);
+      ctx.lineTo(botX, botY);
+      ctx.stroke();
+
+      // Draw exit ray
+      ctx.beginPath();
+      ctx.moveTo(botX, botY);
+      ctx.lineTo(exitEndX, exitEndY);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Bottom hit marker
+      if (wl.nScale === 1.0) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(botX, botY, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = wl.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(botX, botY, 4.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // TIR warning
+    if (isTIR) {
+      ctx.fillStyle = '#ff6b6b';
+      ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠ 全反射（入射角超过临界角）', cx, bTopCy - 85);
+    }
+
+    // ── Top hit marker ────────────────────────
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(hitX, hitY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffbb33';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hitX, hitY, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // ── Info panel ─────────────────────────────
+    document.getElementById('infoTheta1').textContent = alphaDeg.toFixed(1) + '°';
+    document.getElementById('infoRefl').textContent = alphaDeg.toFixed(1) + '°';
+
+    if (mainTheta2 !== null && !isTIR) {
+      document.getElementById('infoTheta2').textContent = (mainTheta2 * 180 / Math.PI).toFixed(1) + '°';
+      document.getElementById('infoOffset').textContent = (thick * Math.tan(mainTheta2)).toFixed(1) + ' px';
+    } else {
+      document.getElementById('infoTheta2').textContent = '全反射';
+      document.getElementById('infoOffset').textContent = '—';
+    }
+
+    if (n2 > n1) {
+      const crit = Math.asin(Math.min(1, n1 / n2));
+      document.getElementById('infoCritical').textContent = (crit * 180 / Math.PI).toFixed(1) + '°';
+    } else {
+      document.getElementById('infoCritical').textContent = '— (光密→光疏时)';
+    }
+  }
+
+  function drawArrow(x1, y1, x2, y2, color) {
+    const a = Math.atan2(y2 - y1, x2 - x1);
+    const al = 15;
+    const aa = Math.PI / 6;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.lineTo(mx - al * Math.cos(a - aa), my - al * Math.sin(a - aa));
+    ctx.lineTo(mx - al * Math.cos(a + aa), my - al * Math.sin(a + aa));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── Canvas drag to adjust incident angle ────
+  var dragging = false;
+
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = W / rect.width;
+    var scaleY = H / rect.height;
+    var cx_ = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy_ = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: (cx_ - rect.left) * scaleX,
+      y: (cy_ - rect.top) * scaleY
+    };
+  }
+
+  canvas.addEventListener('mousedown', function (e) {
+    var p = getPos(e);
+    // Only drag above glass
+    if (p.y < H / 2 + 20) {
+      dragging = true;
+      e.preventDefault();
+    }
+  });
+
+  canvas.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    e.preventDefault();
+    var p = getPos(e);
+    var dx = p.x - W / 2;
+    var dy = H / 2 - p.y;
+    var ang = Math.atan2(Math.abs(dx), Math.max(1, dy)) * 180 / Math.PI;
+    ang = Math.max(0, Math.min(89, ang));
+    slAngle.value = ang;
+    draw();
+  });
+
+  canvas.addEventListener('mouseup', function () { dragging = false; });
+  canvas.addEventListener('mouseleave', function () { dragging = false; });
+
+  // Touch events
+  canvas.addEventListener('touchstart', function (e) {
+    var p = getPos(e);
+    if (p.y < H / 2 + 20) {
+      dragging = true;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (e) {
+    if (!dragging) return;
+    e.preventDefault();
+    var p = getPos(e);
+    var dx = p.x - W / 2;
+    var dy = H / 2 - p.y;
+    var ang = Math.atan2(Math.abs(dx), Math.max(1, dy)) * 180 / Math.PI;
+    ang = Math.max(0, Math.min(89, ang));
+    slAngle.value = ang;
+    draw();
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function () { dragging = false; });
+
+  // Slider changes
+  slN1.addEventListener('input', draw);
+  slN2.addEventListener('input', draw);
+  slAngle.addEventListener('input', draw);
+  slThickness.addEventListener('input', draw);
+  slTilt.addEventListener('input', draw);
+  slRayDist.addEventListener('input', draw);
+  cbDispersion.addEventListener('change', draw);
+  cbReflect.addEventListener('change', draw);
+  cbNormals.addEventListener('change', draw);
+
+  draw();
+})();
+</script>
+</body>
+</html>

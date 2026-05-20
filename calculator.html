@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>计算器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #1a1a2e;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  .calculator {
+    background: #16213e;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    width: 340px;
+  }
+
+  .display {
+    background: #0f0f1a;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    text-align: right;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .expression {
+    color: #6c7a8d;
+    font-size: 16px;
+    min-height: 24px;
+    word-break: break-all;
+  }
+
+  .result {
+    color: #fff;
+    font-size: 36px;
+    font-weight: 300;
+    min-height: 48px;
+    word-break: break-all;
+  }
+
+  .buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  button {
+    border: none;
+    border-radius: 12px;
+    padding: 18px;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  button:active {
+    transform: scale(0.93);
+  }
+
+  .btn-number {
+    background: #1a2744;
+    color: #fff;
+  }
+  .btn-number:hover { background: #243356; }
+
+  .btn-operator {
+    background: #e94560;
+    color: #fff;
+  }
+  .btn-operator:hover { background: #ff6b81; }
+
+  .btn-func {
+    background: #0f3460;
+    color: #b8c7e0;
+  }
+  .btn-func:hover { background: #1a4a7a; }
+
+  .btn-equals {
+    background: #00b894;
+    color: #fff;
+  }
+  .btn-equals:hover { background: #00d9a7; }
+
+  .btn-zero {
+    grid-column: span 2;
+  }
+</style>
+</head>
+<body>
+
+<div class="calculator">
+  <div class="display">
+    <div class="expression" id="expression"></div>
+    <div class="result" id="result">0</div>
+  </div>
+  <div class="buttons">
+    <button class="btn-func" data-action="clear">C</button>
+    <button class="btn-func" data-action="backspace">⌫</button>
+    <button class="btn-func" data-action="percent">%</button>
+    <button class="btn-operator" data-action="operator" data-value="/">÷</button>
+
+    <button class="btn-number" data-action="number" data-value="7">7</button>
+    <button class="btn-number" data-action="number" data-value="8">8</button>
+    <button class="btn-number" data-action="number" data-value="9">9</button>
+    <button class="btn-operator" data-action="operator" data-value="*">×</button>
+
+    <button class="btn-number" data-action="number" data-value="4">4</button>
+    <button class="btn-number" data-action="number" data-value="5">5</button>
+    <button class="btn-number" data-action="number" data-value="6">6</button>
+    <button class="btn-operator" data-action="operator" data-value="-">−</button>
+
+    <button class="btn-number" data-action="number" data-value="1">1</button>
+    <button class="btn-number" data-action="number" data-value="2">2</button>
+    <button class="btn-number" data-action="number" data-value="3">3</button>
+    <button class="btn-operator" data-action="operator" data-value="+">+</button>
+
+    <button class="btn-number btn-zero" data-action="number" data-value="0">0</button>
+    <button class="btn-number" data-action="decimal" data-value=".">.</button>
+    <button class="btn-equals" data-action="equals">=</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const exprEl = document.getElementById('expression');
+  const resultEl = document.getElementById('result');
+
+  let current = '0';
+  let expression = '';
+  let shouldReset = false;
+
+  function updateDisplay() {
+    exprEl.textContent = expression;
+    resultEl.textContent = current;
+  }
+
+  function calculate(expr) {
+    try {
+      const sanitized = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+      const result = Function('"use strict"; return (' + sanitized + ')')();
+      if (!isFinite(result)) return 'Error';
+      return String(Math.round(result * 1e10) / 1e10);
+    } catch {
+      return 'Error';
+    }
+  }
+
+  document.querySelector('.buttons').addEventListener('click', function (e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const value = btn.dataset.value;
+
+    switch (action) {
+      case 'number':
+        if (shouldReset) { current = '0'; expression = ''; shouldReset = false; }
+        current = current === '0' ? value : current + value;
+        break;
+
+      case 'decimal':
+        if (shouldReset) { current = '0'; expression = ''; shouldReset = false; }
+        if (!current.includes('.')) current += '.';
+        break;
+
+      case 'operator':
+        if (current === 'Error') return;
+        shouldReset = false;
+        if (expression && /[+\-*/×÷−]$/.test(expression)) {
+          expression = expression.slice(0, -1) + value;
+        } else {
+          expression += current + value;
+        }
+        current = '0';
+        break;
+
+      case 'equals':
+        if (current === 'Error') return;
+        expression += current;
+        const result = calculate(expression);
+        current = result;
+        expression = '';
+        shouldReset = true;
+        break;
+
+      case 'clear':
+        current = '0';
+        expression = '';
+        shouldReset = false;
+        break;
+
+      case 'backspace':
+        if (shouldReset) return;
+        current = current.length > 1 ? current.slice(0, -1) : '0';
+        break;
+
+      case 'percent':
+        if (current === 'Error') return;
+        current = String(parseFloat(current) / 100);
+        break;
+    }
+
+    updateDisplay();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    const keyMap = {
+      '0': '0','1': '1','2': '2','3': '3','4': '4',
+      '5': '5','6': '6','7': '7','8': '8','9': '9',
+      '.': '.', '+': '+', '-': '-', '*': '*', '/': '/',
+      'Enter': '=', 'Backspace': 'backspace', 'Escape': 'clear', '%': '%'
+    };
+
+    const mapped = keyMap[e.key];
+    if (!mapped) return;
+
+    let targetBtn;
+    if (mapped === 'backspace') {
+      targetBtn = document.querySelector('[data-action="backspace"]');
+    } else if (mapped === 'clear') {
+      targetBtn = document.querySelector('[data-action="clear"]');
+    } else if (mapped === '=') {
+      targetBtn = document.querySelector('[data-action="equals"]');
+    } else if (['+', '-', '*', '/'].includes(mapped)) {
+      targetBtn = document.querySelector(`[data-value="${mapped}"]`);
+    } else {
+      targetBtn = document.querySelector(`[data-value="${mapped}"]`);
+    }
+
+    if (targetBtn) targetBtn.click();
+  });
+})();
+</script>
+</body>
+</html>
