@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:/Users/lenovo/Desktop/ClaudeCodeTest\" remote set-url origin https://github.com/Twilight6666/ClaudeCodeTest-V1-20260521.git)",
+      "Bash(git -C \"c:/Users/lenovo/Desktop/ClaudeCodeTest\" push -u origin master)",
+      "Bash(git -C \"c:/Users/lenovo/Desktop/ClaudeCodeTest\" credential reject https://github.com)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh\" auth setup-git)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh\" repo rename ClaudeCodeTest-V1-20260521 --repo Twilight6666/ClaudeCodeTest-V1-20260521 ClaudeCodeTest)"
+    ]
+  }
+}
