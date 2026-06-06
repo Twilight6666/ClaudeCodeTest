@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#121212">
+<title>骑行计时器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #121212;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .timer-ring {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    margin-bottom: 40px;
+  }
+  .timer-ring svg {
+    transform: rotate(-90deg);
+    width: 260px;
+    height: 260px;
+  }
+  .ring-bg {
+    fill: none;
+    stroke: #2a2a2a;
+    stroke-width: 10;
+  }
+  .ring-fg {
+    fill: none;
+    stroke: #FF6B00;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s linear, stroke 0.3s;
+  }
+  .ring-fg.warning { stroke: #FFD000; }
+  .ring-fg.alarm  { stroke: #FF0040; animation: pulse-stroke 0.5s ease-in-out infinite; }
+
+  .timer-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .time {
+    font-size: 64px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 2px;
+    transition: color 0.3s;
+  }
+  .time.warning { color: #FFD000; }
+  .time.alarm  { color: #FF0040; animation: pulse-text 0.5s ease-in-out infinite; }
+  .label {
+    font-size: 14px;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  .status {
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 8px;
+    height: 24px;
+    line-height: 24px;
+  }
+
+  .btn {
+    width: 200px;
+    height: 56px;
+    border: none;
+    border-radius: 28px;
+    font-size: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
+    letter-spacing: 2px;
+  }
+  .btn:active { transform: scale(0.96); }
+
+  .btn-start {
+    background: #FF6B00;
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(255,107,0,0.4);
+  }
+  .btn-pause {
+    background: #FFD000;
+    color: #121212;
+    box-shadow: 0 4px 20px rgba(255,208,0,0.4);
+  }
+  .btn-reset {
+    background: transparent;
+    color: #FF6B00;
+    border: 2px solid #FF6B00;
+    margin-top: 16px;
+    font-size: 16px;
+  }
+
+  .row { display: flex; gap: 16px; }
+  .btn-sm {
+    width: 100px;
+    height: 40px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    background: transparent;
+    color: #aaa;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-sm:active { background: rgba(255,255,255,0.05); }
+
+  @keyframes pulse-stroke {
+    0%, 100% { stroke-width: 10; }
+    50% { stroke-width: 14; }
+  }
+  @keyframes pulse-text {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  flash {
+    0%, 100% { background: #121212; }
+    50% { background: #2a0008; }
+  }
+  body.flash { animation: flash 0.5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+
+<div class="status" id="status">准备骑行</div>
+
+<div class="timer-ring">
+  <svg viewBox="0 0 260 260">
+    <circle class="ring-bg" cx="130" cy="130" r="120"/>
+    <circle class="ring-fg" id="ring" cx="130" cy="130" r="120"
+            stroke-dasharray="753.98" stroke-dashoffset="0"/>
+  </svg>
+  <div class="timer-text">
+    <div class="time" id="time">30:00</div>
+    <div class="label" id="unit">分钟</div>
+  </div>
+</div>
+
+<button class="btn btn-start" id="btnMain" onclick="toggle()">开始骑行</button>
+<button class="btn btn-reset" id="btnReset" onclick="reset()" style="display:none">重新开始</button>
+
+<div style="margin-top:24px;display:flex;gap:12px">
+  <button class="btn-sm" onclick="setDuration(15)">15 分钟</button>
+  <button class="btn-sm" onclick="setDuration(30)" style="color:#FF6B00;border-color:#FF6B00">30 分钟</button>
+  <button class="btn-sm" onclick="setDuration(45)">45 分钟</button>
+</div>
+
+<script>
+const CIRCUMFERENCE = 2 * Math.PI * 120;
+const ring = document.getElementById('ring');
+const timeEl = document.getElementById('time');
+const unitEl = document.getElementById('unit');
+const statusEl = document.getElementById('status');
+const btnMain = document.getElementById('btnMain');
+const btnReset = document.getElementById('btnReset');
+
+let totalSeconds = 1800;
+let remaining = totalSeconds;
+let running = false;
+let timerId = null;
+let audioCtx = null;
+let vibeId = null;
+let wakeLock = null;
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function updateDisplay() {
+  timeEl.textContent = formatTime(remaining);
+  const pct = remaining / totalSeconds;
+  ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+  ring.classList.remove('warning', 'alarm');
+  timeEl.classList.remove('warning', 'alarm');
+  if (remaining <= 0) {
+    ring.classList.add('alarm');
+    timeEl.classList.add('alarm');
+  } else if (remaining <= 300) {
+    ring.classList.add('warning');
+    timeEl.classList.add('warning');
+  }
+}
+
+function setDuration(min) {
+  if (running) return;
+  totalSeconds = min * 60;
+  remaining = totalSeconds;
+  updateDisplay();
+  statusEl.textContent = '准备骑行';
+  unitEl.textContent = '分钟';
+}
+
+async function toggle() {
+  if (!running) {
+    if (remaining <= 0) remaining = totalSeconds;
+    await startRide();
+  } else {
+    endRide(false);
+  }
+}
+
+async function startRide() {
+  running = true;
+  statusEl.textContent = '骑行中...';
+  btnMain.textContent = '提前结束';
+  btnMain.className = 'btn btn-pause';
+  btnReset.style.display = 'block';
+  unitEl.textContent = '剩余';
+
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) {}
+
+  timerId = setInterval(() => {
+    remaining--;
+    updateDisplay();
+    if (remaining <= 0) {
+      clearInterval(timerId);
+      timerId = null;
+      triggerAlarm();
+    }
+  }, 1000);
+}
+
+async function endRide(ended) {
+  running = false;
+  clearInterval(timerId);
+  timerId = null;
+  statusEl.textContent = ended ? '时间到！请结束骑行' : '已结束';
+  btnMain.style.display = 'none';
+  btnReset.style.display = 'block';
+
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+}
+
+async function reset() {
+  clearInterval(timerId);
+  timerId = null;
+  running = false;
+  remaining = totalSeconds;
+  ring.classList.remove('warning', 'alarm');
+  timeEl.classList.remove('warning', 'alarm');
+  document.body.classList.remove('flash');
+  updateDisplay();
+  statusEl.textContent = '准备骑行';
+  unitEl.textContent = '分钟';
+  btnMain.textContent = '开始骑行';
+  btnMain.className = 'btn btn-start';
+  btnMain.style.display = 'block';
+  btnReset.style.display = 'none';
+  stopAlarm();
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+}
+
+function triggerAlarm() {
+  endRide(true);
+  document.body.classList.add('flash');
+
+  if (navigator.vibrate) {
+    navigator.vibrate([500, 500]);
+    vibeId = setInterval(() => {
+      if (document.body.classList.contains('flash')) {
+        navigator.vibrate([500, 500]);
+      } else {
+        clearInterval(vibeId);
+      }
+    }, 1000);
+  }
+
+  playAlarm();
+}
+
+function playAlarm() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function beep(freq, startTime, duration) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  }
+
+  const now = audioCtx.currentTime;
+  for (let i = 0; i < 10; i++) {
+    const t = now + i * 0.6;
+    beep(880, t, 0.15);
+    beep(660, t + 0.3, 0.15);
+  }
+}
+
+function stopAlarm() {
+  document.body.classList.remove('flash');
+  if (vibeId) { clearInterval(vibeId); vibeId = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+// PWA manifest (blob URL)
+(function() {
+  const m = {
+    name: '骑行计时器',
+    short_name: '骑行计时',
+    start_url: location.href,
+    display: 'standalone',
+    background_color: '#121212',
+    theme_color: '#121212',
+    description: '骑行倒计时提醒，到时间自动响铃震动',
+    icons: [{
+      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192"><rect width="192" height="192" rx="32" fill="#121212"/><circle cx="96" cy="96" r="60" fill="none" stroke="#FF6B00" stroke-width="12"/><text x="96" y="86" text-anchor="middle" font-size="40" font-weight="bold" fill="#fff" font-family="sans-serif">30</text><text x="96" y="120" text-anchor="middle" font-size="14" fill="#888" font-family="sans-serif">分钟</text></svg>'),
+      sizes: '192x192',
+      type: 'image/svg+xml'
+    }]
+  };
+  const b = new Blob([JSON.stringify(m)], { type: 'application/json' });
+  const l = document.createElement('link');
+  l.rel = 'manifest';
+  l.href = URL.createObjectURL(b);
+  document.head.appendChild(l);
+})();
+
+// Service worker (blob URL)
+if ('serviceWorker' in navigator) {
+  const code = 'self.addEventListener("install",e=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("fetch",e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});';
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([code], { type: 'application/javascript' }))).catch(() => {});
+}
+
+// Install prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  statusEl.textContent = '点此安装到桌面';
+  statusEl.style.color = '#FF6B00';
+  statusEl.style.cursor = 'pointer';
+  statusEl.onclick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const r = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    statusEl.style.color = '#888';
+    statusEl.textContent = r.outcome === 'accepted' ? '已安装' : '准备骑行';
+    statusEl.onclick = null;
+    statusEl.style.cursor = 'default';
+  };
+});
+
+updateDisplay();
+</script>
+</body>
+</html>
